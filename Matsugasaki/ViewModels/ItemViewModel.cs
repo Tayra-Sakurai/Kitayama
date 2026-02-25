@@ -65,6 +65,101 @@ namespace Matsugasaki.ViewModels
             model.IncomeMethod = FindMethod(methodName);
         }
 
+        private LargeCategory FindLargeCategory(string name)
+        {
+            return context
+                .LargeCategories
+                .Include(e => e.MediumCategories)
+                .ThenInclude(e => e.SmallCategories)
+                .Single(c => c.Name == name);
+        }
+
+        /// <summary>
+        /// Updates the collections.
+        /// </summary>
+        /// <param name="model">The data model.</param>
+        private void UpdateCollections(Item model)
+        {
+            LargeCategory category = model.SmallCategory.MediumCategory.LargeCategory;
+
+            IQueryable<MediumCategory> entry = context.Entry(category)
+                .Collection(e => e.MediumCategories)
+                .Query();
+
+            MediumCategories.Clear();
+
+            foreach (MediumCategory medium
+                in entry)
+                MediumCategories.Add(medium.Name);
+
+            SmallCategories.Clear();
+
+            MediumCategory mediumCategory = model.SmallCategory.MediumCategory;
+
+            IQueryable<SmallCategory> smallCategories =
+                context
+                .Entry(mediumCategory)
+                .Collection(e => e.SmallCategories)
+                .Query();
+
+            foreach (
+                SmallCategory smallCategory in smallCategories)
+                SmallCategories.Add(smallCategory.Name);
+        }
+
+        /// <inheritdoc cref="UpdateCollections(Item)"/>
+        [RelayCommand]
+        public void UpdateCollections()
+        {
+            UpdateCollections(item);
+        }
+
+        private MediumCategory FindMediumCategory(Item model, string name)
+        {
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(name);
+
+            ICollection<MediumCategory> mediumCategories =
+                context
+                .LargeCategories
+                .Include(e => e.MediumCategories)
+                .ThenInclude(e => e.SmallCategories)
+                .Single(c => c.Id == model.SmallCategory.MediumCategory.LargeCategoryId)
+                .MediumCategories;
+
+            return mediumCategories.FirstOrDefault(c => c.Name == name);
+        }
+
+        private SmallCategory FindSmallCategory(Item model, string name)
+        {
+            ICollection<SmallCategory> smallCategories =
+                context
+                .MediumCategories
+                .Include(e => e.SmallCategories)
+                .Single(c => c.Id == model.SmallCategory.MediumCategoryId)
+                .SmallCategories;
+
+            return smallCategories.FirstOrDefault(c => c.Name == name);
+        }
+
+        private void SetLargeCategory(Item model, string name)
+        {
+            model.SmallCategory = FindLargeCategory(name).MediumCategories.First().SmallCategories.First();
+        }
+
+        private void SetMediumCategory(Item model, string name)
+        {
+            model.SmallCategory = FindMediumCategory(model, name).SmallCategories.First();
+
+            UpdateCollections(model);
+        }
+
+        private void SetSmallCategory(Item model, string name)
+        {
+            model.SmallCategory = FindSmallCategory(model, name);
+
+            UpdateCollections(model);
+        }
+
         public DateTimeOffset Date
         {
             get => item.DateTime.Date;
@@ -101,6 +196,24 @@ namespace Matsugasaki.ViewModels
             set => SetProperty(item.Amount, value, item, (m, v) => m.Amount = (int)v);
         }
 
+        public string LargeCategory
+        {
+            get => item.SmallCategory.MediumCategory.LargeCategory.Name;
+            set => SetProperty(item.SmallCategory.MediumCategory.LargeCategory.Name, value, item, SetLargeCategory);
+        }
+
+        public string MediumCategory
+        {
+            get => item.SmallCategory.MediumCategory.Name;
+            set => SetProperty(item.SmallCategory.MediumCategory.Name, value, item, SetMediumCategory);
+        }
+
+        public string SmallCategory
+        {
+            get => item.SmallCategory.Name;
+            set => SetProperty(item.SmallCategory.Name, value, item, SetSmallCategory);
+        }
+
         public ObservableCollection<string> Methods
         {
             get
@@ -114,6 +227,24 @@ namespace Matsugasaki.ViewModels
             }
         }
 
+        public ObservableCollection<string> LargeCategories
+        {
+            get
+            {
+                IQueryable<string> strings =
+                    from LargeCategory in context.LargeCategories
+                    orderby LargeCategory.Id
+                    select LargeCategory.Name;
+                return new ObservableCollection<string>(strings);
+            }
+        }
+
+        [ObservableProperty]
+        private ObservableCollection<string> mediumCategories;
+
+        [ObservableProperty]
+        private ObservableCollection<string> smallCategories;
+
         public ItemViewModel()
         {
             context = new();
@@ -123,11 +254,40 @@ namespace Matsugasaki.ViewModels
                 Amount = 0,
                 Name = string.Empty,
             };
+
+            MediumCategories = [];
+            SmallCategories = [];
+
+            foreach (
+                MediumCategory mediumCategory
+                in context
+                .LargeCategories
+                .Include(e => e.MediumCategories)
+                .First()
+                .MediumCategories)
+                MediumCategories.Add(mediumCategory.Name);
+
+            foreach (
+                SmallCategory small
+                in context
+                .LargeCategories
+                .Include(e => e.MediumCategories)
+                .ThenInclude(e => e.SmallCategories)
+                .First()
+                .MediumCategories
+                .First()
+                .SmallCategories)
+                SmallCategories.Add(small.Name);
         }
 
         public void InitializeForExistingrecord(Item item)
         {
             this.item = item;
+
+            SmallCategories.Clear();
+            MediumCategories.Clear();
+
+
 
             OnPropertyChanged();
         }

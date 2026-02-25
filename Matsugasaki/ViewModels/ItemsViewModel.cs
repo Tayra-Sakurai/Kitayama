@@ -57,7 +57,10 @@ namespace Matsugasaki.ViewModels
             await context.SaveChangesAsync();
             Items.Clear();
 
-            List<Item> ilist = await context.Items.ToListAsync();
+            List<Item> ilist =
+                await context
+                .Items
+                .ToListAsync();
             ilist.Sort();
 
             foreach (var item in ilist)
